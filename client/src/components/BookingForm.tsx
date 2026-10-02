@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -25,16 +25,51 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { locationOptions, insertBookingEnquirySchema, type InsertBookingEnquiry } from "@shared/schema";
+import { locationOptions, bookingEnquiryBaseSchema, type InsertBookingEnquiry } from "@shared/schema";
 import { Loader2, CheckCircle2, MapPin, Users, User } from "lucide-react";
 
-const bookingFormSchema = insertBookingEnquirySchema.extend({
-  whereTo: z.string().min(1, "Please select a destination"),
-  whereFrom: z.string().min(1, "Please select a pickup location"),
-  pickupDate: z.string().min(1, "Please select a pickup date"),
-});
+// Extends the shared base rather than the refined server schema: the client
+// reports a missing return date with its own message and returns early once the
+// box is ticked. The server re-validates with insertBookingEnquirySchema, so
+// this is a convenience layer, never the enforcement point.
+const bookingFormSchema = bookingEnquiryBaseSchema
+  .extend({
+    whereTo: z.string().min(1, "Please select a destination"),
+    whereFrom: z.string().min(1, "Please select a pickup location"),
+    pickupDate: z.string().min(1, "Please select a pickup date"),
+  })
+  .superRefine((value, ctx) => {
+    if (value.returnTrip && !value.returnDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["returnDate"],
+        message: "Please select a return date",
+      });
+    }
+  });
 
 type BookingFormData = z.infer<typeof bookingFormSchema>;
+
+/**
+ * Bots fill every visible field; people never see this one. It is hidden from
+ * sighted users and from assistive technology, and left out of the tab order.
+ * The server treats any value here as a bot submission.
+ */
+function HoneypotField({ inputRef }: { inputRef: React.RefObject<HTMLInputElement> }) {
+  return (
+    <div aria-hidden="true" className="absolute left-[-9999px] top-[-9999px] h-0 w-0 overflow-hidden">
+      <label htmlFor="booking-website">Website</label>
+      <input
+        ref={inputRef}
+        type="text"
+        id="booking-website"
+        name="website"
+        tabIndex={-1}
+        autoComplete="off"
+      />
+    </div>
+  );
+}
 
 export function BookingForm() {
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -49,6 +84,8 @@ export function BookingForm() {
       returnTrip: false,
       differentReturnAddress: false,
       returnAddress: "",
+      returnDate: "",
+      returnTime: "",
       numAdults: 1,
       numChildren: 0,
       firstName: "",
@@ -61,6 +98,8 @@ export function BookingForm() {
 
   const watchReturnTrip = form.watch("returnTrip");
   const watchDifferentReturn = form.watch("differentReturnAddress");
+  const watchPickupDate = form.watch("pickupDate");
+  const honeypotRef = useRef<HTMLInputElement>(null);
 
   const mutation = useMutation({
     mutationFn: async (data: BookingFormData) => {
@@ -84,7 +123,9 @@ export function BookingForm() {
   });
 
   const onSubmit = (data: BookingFormData) => {
-    mutation.mutate(data);
+    // Send the honeypot value explicitly. Leaving it empty is the signal that
+    // a real person submitted the form.
+    mutation.mutate({ ...data, website: honeypotRef.current?.value ?? "" });
   };
 
   if (isSubmitted) {
@@ -147,6 +188,7 @@ export function BookingForm() {
           <CardContent className="p-6 lg:p-8">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                  <HoneypotField inputRef={honeypotRef} />
                 <div className="space-y-6">
                   <div className="flex items-center gap-2 text-foreground font-medium">
                     <MapPin className="h-5 w-5 text-primary" />
@@ -239,7 +281,7 @@ export function BookingForm() {
                           <FormItem className="flex items-center space-x-2 space-y-0">
                             <FormControl>
                               <Checkbox
-                                checked={field.value}
+                                checked={field.value ?? false}
                                 onCheckedChange={field.onChange}
                                 data-testid="checkbox-return-trip"
                               />
@@ -259,9 +301,9 @@ export function BookingForm() {
                             <FormItem className="flex items-center space-x-2 space-y-0">
                               <FormControl>
                                 <Checkbox
-                                  checked={field.value}
-                                  onCheckedChange={field.onChange}
-                                  data-testid="checkbox-different-return"
+checked={field.value ?? false}
+                                onCheckedChange={field.onChange}
+                                data-testid="checkbox-different-return"
                                 />
                               </FormControl>
                               <FormLabel className="font-normal cursor-pointer">
@@ -273,6 +315,49 @@ export function BookingForm() {
                       )}
                     </div>
                   </div>
+
+                  {watchReturnTrip && (
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="returnDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Return date *</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                {...field}
+                                value={field.value ?? ""}
+                                min={watchPickupDate || new Date().toISOString().split("T")[0]}
+                                data-testid="input-return-date"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="returnTime"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Approximate return time</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="time"
+                                {...field}
+                                value={field.value ?? ""}
+                                data-testid="input-return-time"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  )}
 
                   {watchReturnTrip && watchDifferentReturn && (
                     <FormField

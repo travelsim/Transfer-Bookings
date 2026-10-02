@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { describeResponseBody } from "./redact";
+import { checkDatabase } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -48,8 +50,11 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      // Describe the response shape only. The previous implementation appended
+      // the full JSON body, which wrote customer names, emails and phone
+      // numbers to stdout on every enquiry.
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        logLine += ` :: ${describeResponseBody(capturedJsonResponse)}`;
       }
 
       log(logLine);
@@ -61,6 +66,25 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  app.get("/api/health", (_req, res) => {
+    return res.json({ status: "ok" });
+  });
+
+  if (process.env.DATABASE_URL) {
+    const dbOk = await checkDatabase();
+    if (dbOk) {
+      log("database connection verified");
+    } else {
+      // Do not exit: the platform may still be starting the database, and
+      // staying up allows a health probe to pass while the app recovers. The
+      // failure is logged loudly because every enquiry depends on it.
+      console.error(
+        "WARNING: DATABASE_URL is set but the database is not reachable. " +
+          "Enquiries will fail to store until this is resolved.",
+      );
+    }
+  }
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

@@ -4,3 +4,9 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Secrets. The repository is public, so an accidentally committed .env would
+# leak database credentials, the admin token and the operator webhook.
+.env
+.env.*
+!.env.example

@@ -26,6 +26,8 @@ export const bookingEnquiries = pgTable("booking_enquiries", {
   returnTrip: boolean("return_trip").default(false),
   differentReturnAddress: boolean("different_return_address").default(false),
   returnAddress: text("return_address"),
+  returnDate: text("return_date"),
+  returnTime: text("return_time"),
   numAdults: integer("num_adults").notNull(),
   numChildren: integer("num_children").default(0),
   firstName: text("first_name").notNull(),
@@ -33,19 +35,65 @@ export const bookingEnquiries = pgTable("booking_enquiries", {
   email: text("email").notNull(),
   phone: text("phone"),
   additionalInfo: text("additional_info"),
+  // Honeypot: real users never see or fill this. Bots that submit every
+  // field populate it. Accepted by validation, discarded by the route.
+  website: text("website"),
+  status: text("status").notNull().default("new"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
-export const insertBookingEnquirySchema = createInsertSchema(bookingEnquiries).omit({
-  id: true,
-}).extend({
-  email: z.string().email("Please enter a valid email address"),
-  numAdults: z.number().min(1, "At least 1 adult is required"),
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  whereTo: z.string().min(1, "Destination is required"),
-  whereFrom: z.string().min(1, "Pickup location is required"),
-  pickupDate: z.string().min(1, "Pickup date is required"),
-});
+export const bookingEnquiryBaseSchema = createInsertSchema(bookingEnquiries)
+  .omit({
+    id: true,
+    // Server-owned. A client must never be able to set enquiry state.
+    status: true,
+    createdAt: true,
+  })
+  .extend({
+    email: z.string().email("Please enter a valid email address"),
+    numAdults: z.number().min(1, "At least 1 adult is required"),
+    numChildren: z.number().min(0).max(20).optional(),
+    firstName: z.string().min(1, "First name is required"),
+    lastName: z.string().min(1, "Last name is required"),
+    whereTo: z.string().min(1, "Destination is required"),
+    whereFrom: z.string().min(1, "Pickup location is required"),
+    pickupDate: z.string().min(1, "Pickup date is required"),
+    returnDate: z.string().optional(),
+    returnTime: z.string().optional(),
+    // Optional and not nullable at the API boundary. The database columns stay
+    // nullable; the route maps "absent" to SQL NULL explicitly.
+    returnAddress: z.string().max(500).optional(),
+    phone: z.string().max(40).optional(),
+    additionalInfo: z.string().max(2000).optional(),
+    website: z.string().max(200).optional(),
+  });
+
+export const insertBookingEnquirySchema = bookingEnquiryBaseSchema.superRefine(
+  (value, ctx) => {
+    // A return trip without a return date is unquotable, so it must not
+    // reach the operator as a half-finished request.
+    if (value.returnTrip && !value.returnDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["returnDate"],
+        message: "Please select a return date",
+      });
+    }
+    if (
+      value.returnDate &&
+      value.pickupDate &&
+      value.returnDate < value.pickupDate
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["returnDate"],
+        message: "Return date cannot be before the pick up date",
+      });
+    }
+  },
+);
 
 export type InsertBookingEnquiry = z.infer<typeof insertBookingEnquirySchema>;
 export type BookingEnquiry = typeof bookingEnquiries.$inferSelect;

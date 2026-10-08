@@ -103,6 +103,34 @@ test("redaction masks sensitive keys at any depth", () => {
   assert.ok(serialised.includes("visible"));
 });
 
+test("rejects an unparseable return date instead of passing it through", () => {
+  const result = insertBookingEnquirySchema.safeParse({
+    ...validEnquiry,
+    returnTrip: true,
+    returnDate: "not-a-date",
+  });
+  assert.equal(result.success, false);
+});
+
+test("accepts a same-day return trip", () => {
+  const result = insertBookingEnquirySchema.safeParse({
+    ...validEnquiry,
+    returnTrip: true,
+    returnDate: "2026-08-01",
+  });
+  assert.equal(result.success, true);
+});
+
+test("rejects an invalid return time", () => {
+  const result = insertBookingEnquirySchema.safeParse({
+    ...validEnquiry,
+    returnTrip: true,
+    returnDate: "2026-08-03",
+    returnTime: "25:99",
+  });
+  assert.equal(result.success, false);
+});
+
 test("token comparison rejects a wrong token and accepts the right one", () => {
   assert.equal(safeEqual("correct-token", "correct-token"), true);
   assert.equal(safeEqual("correct-token", "wrong-token"), false);

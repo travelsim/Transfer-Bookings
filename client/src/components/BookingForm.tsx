@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { locationOptions, bookingEnquiryBaseSchema, type InsertBookingEnquiry } from "@shared/schema";
+import { locationOptions, bookingEnquiryBaseSchema, parseIsoDateOnly, isValidTimeOnly, type InsertBookingEnquiry } from "@shared/schema";
 import { Loader2, CheckCircle2, MapPin, Users, User } from "lucide-react";
 
 // Extends the shared base rather than the refined server schema: the client
@@ -44,6 +44,34 @@ const bookingFormSchema = bookingEnquiryBaseSchema
         code: z.ZodIssueCode.custom,
         path: ["returnDate"],
         message: "Please select a return date",
+      });
+    }
+    // UX parity only: the server re-validates with
+    // insertBookingEnquirySchema and is the enforcement point.
+    if (value.returnDate) {
+      const returnT = parseIsoDateOnly(value.returnDate);
+      if (returnT === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["returnDate"],
+          message: "Please select a valid return date (YYYY-MM-DD)",
+        });
+      } else if (value.pickupDate) {
+        const pickupT = parseIsoDateOnly(value.pickupDate);
+        if (pickupT !== null && returnT < pickupT) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["returnDate"],
+            message: "Return date cannot be before the pick up date",
+          });
+        }
+      }
+    }
+    if (value.returnTime && !isValidTimeOnly(value.returnTime)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["returnTime"],
+        message: "Please select a valid return time (HH:MM)",
       });
     }
   });

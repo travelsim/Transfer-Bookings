@@ -43,10 +43,9 @@ export async function notifyOperator(enquiry: BookingEnquiry): Promise<void> {
     return;
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8_000);
-
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -62,8 +61,6 @@ export async function notifyOperator(enquiry: BookingEnquiry): Promise<void> {
       signal: controller.signal,
     });
 
-    clearTimeout(timeout);
-
     if (!response.ok) {
       console.error(
         `Operator webhook responded ${response.status} for enquiry ${enquiry.id}. ` +
@@ -75,5 +72,7 @@ export async function notifyOperator(enquiry: BookingEnquiry): Promise<void> {
       `Operator notification failed for enquiry ${enquiry.id}: ${error?.message}. ` +
         "The enquiry is stored and must be picked up manually.",
     );
+  } finally {
+    clearTimeout(timeout);
   }
 }

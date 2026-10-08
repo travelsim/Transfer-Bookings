@@ -33,6 +33,7 @@ export async function registerRoutes(
       // Respond exactly as a success would so the bot learns nothing, but store
       // nothing and notify nobody.
       if (parseResult.data.website) {
+        res.setHeader("Cache-Control", "no-store");
         return res.status(201).json({
           message: "Booking enquiry submitted successfully",
         });
@@ -48,6 +49,7 @@ export async function registerRoutes(
       // Deliberately does not echo the stored enquiry back. The response goes
       // over the network and would otherwise restate the customer's PII
       // unnecessarily; the client only needs to know it was accepted.
+      res.setHeader("Cache-Control", "no-store");
       return res.status(201).json({
         message: "Booking enquiry submitted successfully",
         enquiryId: enquiry.id,

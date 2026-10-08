@@ -70,6 +70,33 @@ export const bookingEnquiryBaseSchema = createInsertSchema(bookingEnquiries)
     website: z.string().max(200).optional(),
   });
 
+export function parseIsoDateOnly(value: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+  const [y, m, d] = value.split("-").map(Number);
+  const t = Date.UTC(y, m - 1, d);
+  const check = new Date(t);
+  if (
+    check.getUTCFullYear() !== y ||
+    check.getUTCMonth() !== m - 1 ||
+    check.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  return t;
+}
+
+export function isValidTimeOnly(value: string): boolean {
+  const m = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!m) {
+    return false;
+  }
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  return hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59;
+}
+
 export const insertBookingEnquirySchema = bookingEnquiryBaseSchema.superRefine(
   (value, ctx) => {
     // A return trip without a return date is unquotable, so it must not
@@ -81,15 +108,34 @@ export const insertBookingEnquirySchema = bookingEnquiryBaseSchema.superRefine(
         message: "Please select a return date",
       });
     }
-    if (
-      value.returnDate &&
-      value.pickupDate &&
-      value.returnDate < value.pickupDate
-    ) {
+    if (value.returnDate) {
+      const returnT = parseIsoDateOnly(value.returnDate);
+      if (returnT === null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["returnDate"],
+          message: "Please select a valid return date (YYYY-MM-DD)",
+        });
+        return;
+      }
+      if (value.pickupDate) {
+        const pickupT = parseIsoDateOnly(value.pickupDate);
+        // Pickup format is enforced by the date input; if it is somehow
+        // unparseable here, let the pickup field's own validation speak.
+        if (pickupT !== null && returnT < pickupT) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["returnDate"],
+            message: "Return date cannot be before the pick up date",
+          });
+        }
+      }
+    }
+    if (value.returnTime && !isValidTimeOnly(value.returnTime)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["returnDate"],
-        message: "Return date cannot be before the pick up date",
+        path: ["returnTime"],
+        message: "Please select a valid return time (HH:MM)",
       });
     }
   },

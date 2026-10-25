@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title">
+  <title id="title">Alpine Shuttle Favicon</title>
+  <rect width="100" height="100" rx="22" fill="#0F172A"/>
+  <!-- Mountain peaks -->
+  <polygon points="18,72 42,32 56,54 50,72" fill="#334155"/>
+  <polygon points="38,72 62,22 86,72" fill="#38BDF8"/>
+  <polygon points="62,22 70,38 64,42 60,34 56,42 54,38" fill="#FFFFFF"/>
+  <polygon points="42,32 48,44 44,46 41,40 37,46 36,44" fill="#E2E8F0"/>
+  <!-- Winding mountain road / transfer route -->
+  <path d="M15,82 Q35,74 50,82 T85,82" fill="none" stroke="#F59E0B" stroke-width="4" stroke-linecap="round"/>
+</svg>
